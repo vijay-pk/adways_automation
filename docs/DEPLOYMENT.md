@@ -26,6 +26,29 @@
 Break-glass reset: `docker compose run --rm app node dist/cli/resetPassword.js you@x.com` prints a one-time
 token; use it at `/reset-password`.
 
+## 1b. Supabase setup (database, private file storage, pgvector)
+
+1. **Database**: Supabase → Project Settings → Database → connection strings.
+   - `DATABASE_URL` = the pooled (port 6543) URI with `?pgbouncer=true&sslmode=require`
+   - `DIRECT_URL` = the direct/session (port 5432) URI with `?sslmode=require` (used by migrations)
+   - `TEST_DATABASE_URL` = the direct URI with `?schema=tutor_test` (the test suite wipes this schema only)
+2. **pgvector**: nothing to do. The `knowledge_base` migration enables the `vector` extension (in the
+   `extensions` schema) and creates a pgvector embedding column. On databases without pgvector it falls back
+   to a `real[]` column automatically. The Knowledge Base page header shows which backend is active.
+3. **Storage**: set `STORAGE_PROVIDER=supabase`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+   (Project Settings → API). On startup the server creates the `transcripts` bucket as **private**, and refuses
+   to start if an existing bucket with that name is public. Files are only read through the authenticated
+   `/api/transcripts/:id/original` endpoint (reviewers and super admins).
+4. **Row Level Security**: the migration enables RLS on every application table with no policies, so
+   Supabase's public `anon`/`authenticated` API keys cannot read anything. The server connects as the table
+   owner and is unaffected. Never put the service-role key in the frontend or in `VITE_*` variables.
+5. **Embeddings** (semantic search): set `EMBEDDING_PROVIDER=openai_compatible`, `EMBEDDING_API_KEY`, and
+   optionally `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` (default OpenAI `text-embedding-3-small`; any
+   OpenAI-style `/embeddings` endpoint works). Groq is not used for embeddings. If you change the model later,
+   click **Re-embed all** in the Knowledge Base. Without a provider, retrieval uses full-text search only.
+6. Run `npm run db:migrate` (or let the Docker container do it), then add transcripts from **Knowledge Base**.
+   Uploads and pasted text are processed in the background; no code change or redeploy is needed per class.
+
 ## 2. Backups and restore testing
 
 The database is the only stateful component besides uploaded transcript files (`uploads` volume).

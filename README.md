@@ -9,7 +9,7 @@ Messaging goes through replaceable adapters; all state lives in PostgreSQL.
 | Area | Status |
 |---|---|
 | Admin auth: Argon2id, sessions (HttpOnly cookie), CSRF, lockout, rate limit, forced first-login password change, reset tokens, optional TOTP, roles (Super Admin / Reviewer / Viewer), audit log | Done |
-| Transcripts: TXT, PDF, DOCX, SRT, VTT, Markdown; timestamps kept; cleaning; ~800-token overlapping chunks; SHA-256 dedup; Postgres full-text search; reprocess/delete | Done |
+| Knowledge Base: upload (TXT, PDF, DOCX, SRT, VTT, Markdown) or paste transcripts; title/module/topic/description; private original storage (local or Supabase bucket); background processing with retries; ~800-token overlapping chunks; embeddings (configurable provider, pgvector on Supabase); hybrid full-text + semantic search; search/filter/sort, preview, edit, replace, reprocess, delete | Done |
 | AI: Groq (OpenAI-compatible) + deterministic mock; grounded prompt; JSON output; citation validation against DB records; evidence fallback; usage and cost tracking; daily budget | Done |
 | Routing: groups only on a genuine native mention (or opt-in text command / quoted reply to the tutor), allowlisted groups, enrollment checks, rate limits, dedup, no self-replies; private messages always eligible | Done |
 | Context engine: same sender + same chat + time window, debounced bursts, LLM correlation into one question, follow-up detection, consumed-message tracking | Done |
@@ -37,7 +37,7 @@ npm run db:migrate                      # apply migrations
 npm run admin:create                    # first super admin from INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD
 npm run dev:server                      # API + worker on :3000
 npm run dev:web                         # dashboard on http://localhost:5173 (proxies /api)
-npm test                                # 67 automated tests (mock AI + mock messaging only)
+npm test                                # 89 automated tests (mock AI + mock messaging only)
 ```
 
 Set `ENABLE_DEV_ROUTES=true` to get the **Mock adapter simulator** on the Messaging page, which lets you send
