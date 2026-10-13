@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+server/.localdb
+server/uploads
+server/.test-uploads
+.playwright-mcp
+.git

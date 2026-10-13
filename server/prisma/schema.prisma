@@ -1,0 +1,408 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  REVIEWER
+  VIEWER
+}
+
+enum Channel {
+  WHATSAPP_WEB
+  WHATSAPP_CLOUD
+  MOCK
+  WEB
+}
+
+enum ChatType {
+  GROUP
+  PRIVATE
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  PENDING
+  SUSPENDED
+  REMOVED
+}
+
+enum ProcessingStatus {
+  RECEIVED
+  CONTEXT_ONLY
+  QUEUED
+  CONSUMED
+  IGNORED
+  BLOCKED
+}
+
+enum ResponseStatus {
+  GENERATING
+  PENDING_APPROVAL
+  APPROVED
+  SENDING
+  SENT
+  REJECTED
+  CANCELLED
+  FAILED
+}
+
+enum TranscriptStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum DeliveryStatus {
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+  CANCELLED
+}
+
+model Administrator {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  passwordHash       String    @map("password_hash")
+  role               AdminRole @default(VIEWER)
+  mustChangePassword Boolean   @default(true) @map("must_change_password")
+  isActive           Boolean   @default(true) @map("is_active")
+  totpSecret         String?   @map("totp_secret")
+  totpEnabled        Boolean   @default(false) @map("totp_enabled")
+  failedLogins       Int       @default(0) @map("failed_logins")
+  lockedUntil        DateTime? @map("locked_until")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  lastLoginAt        DateTime? @map("last_login_at")
+
+  sessions       AdminSession[]
+  resetTokens    PasswordResetToken[]
+  auditLogs      AuditLog[]
+  approvedJobs   ResponseJob[]        @relation("ApprovedBy")
+  settingsEdited ApplicationSetting[]
+
+  @@map("administrators")
+}
+
+model AdminSession {
+  id          String        @id @default(uuid())
+  tokenHash   String        @unique @map("token_hash")
+  csrfToken   String        @map("csrf_token")
+  adminId     String        @map("admin_id")
+  admin       Administrator @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  totpPending Boolean       @default(false) @map("totp_pending")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  lastSeenAt  DateTime      @default(now()) @map("last_seen_at")
+  expiresAt   DateTime      @map("expires_at")
+  ip          String?
+  userAgent   String?       @map("user_agent")
+
+  @@index([adminId])
+  @@map("admin_sessions")
+}
+
+model PasswordResetToken {
+  id        String        @id @default(uuid())
+  tokenHash String        @unique @map("token_hash")
+  adminId   String        @map("admin_id")
+  admin     Administrator @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  expiresAt DateTime      @map("expires_at")
+  usedAt    DateTime?     @map("used_at")
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  @@map("password_reset_tokens")
+}
+
+model Student {
+  id                 String           @id @default(uuid())
+  channel            Channel
+  platformUserId     String           @map("platform_user_id")
+  normalizedPhone    String?          @map("normalized_phone_number")
+  displayName        String?          @map("display_name")
+  enrollmentStatus   EnrollmentStatus @default(PENDING) @map("enrollment_status")
+  webAccessCodeHash  String?          @map("web_access_code_hash")
+  dailyLimitOverride Int?             @map("daily_limit_override")
+  createdAt          DateTime         @default(now()) @map("created_at")
+
+  conversations Conversation[]
+  messages      IncomingMessage[]
+
+  @@unique([channel, platformUserId])
+  @@index([normalizedPhone])
+  @@map("students")
+}
+
+model Group {
+  id             String   @id @default(uuid())
+  channel        Channel
+  externalChatId String   @map("external_chat_id")
+  name           String?
+  enabled        Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([channel, externalChatId])
+  @@map("groups")
+}
+
+model Transcript {
+  id                 String           @id @default(uuid())
+  filename           String
+  moduleName         String?          @map("module_name")
+  lessonTitle        String?          @map("lesson_title")
+  topic              String?
+  description        String?
+  sourceType         String           @default("upload") @map("source_type")
+  storageProvider    String           @default("local") @map("storage_provider")
+  extractedText      String?          @map("extracted_text")
+  embeddedChunkCount Int              @default(0) @map("embedded_chunk_count")
+  processingAttempts Int              @default(0) @map("processing_attempts")
+  processedAt        DateTime?        @map("processed_at")
+  fileHash           String           @unique @map("file_hash")
+  storagePath        String           @map("storage_path")
+  mimeType           String?          @map("mime_type")
+  sizeBytes          Int              @default(0) @map("size_bytes")
+  processingStatus   TranscriptStatus @default(PENDING) @map("processing_status")
+  processingError    String?          @map("processing_error")
+  chunkCount         Int              @default(0) @map("chunk_count")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  chunks TranscriptChunk[]
+
+  @@index([moduleName, lessonTitle])
+  @@index([processingStatus])
+  @@index([topic])
+  @@map("transcripts")
+}
+
+model TranscriptChunk {
+  id             String                   @id @default(uuid())
+  transcriptId   String                   @map("transcript_id")
+  transcript     Transcript               @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  chunkIndex     Int                      @map("chunk_index")
+  content        String
+  timestampStart String?                  @map("timestamp_start")
+  timestampEnd   String?                  @map("timestamp_end")
+  tokenEstimate  Int                      @default(0) @map("token_estimate")
+  searchTsv      Unsupported("tsvector")? @map("search_tsv")
+  /// pgvector "vector" on Supabase, real[] elsewhere (see knowledge_base migration).
+  embedding      Unsupported("vector")?
+  embeddingModel String?                  @map("embedding_model")
+  embeddingDims  Int?                     @map("embedding_dims")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+
+  @@unique([transcriptId, chunkIndex])
+  @@index([searchTsv], type: Gin, map: "transcript_chunks_search_tsv_idx")
+  @@map("transcript_chunks")
+}
+
+model Conversation {
+  id             String    @id @default(uuid())
+  channel        Channel
+  externalChatId String    @map("external_chat_id")
+  chatType       ChatType  @map("chat_type")
+  studentId      String?   @map("student_id")
+  student        Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  lastMessageAt  DateTime? @map("last_message_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  messages IncomingMessage[]
+  jobs     ResponseJob[]
+
+  @@unique([channel, externalChatId])
+  @@map("conversations")
+}
+
+model IncomingMessage {
+  id                String           @id @default(uuid())
+  channel           Channel
+  externalMessageId String           @map("external_message_id")
+  conversationId    String           @map("conversation_id")
+  conversation      Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderExternalId  String           @map("sender_external_id")
+  studentId         String?          @map("sender_id")
+  student           Student?         @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  content           String?
+  timestamp         DateTime
+  mentionMetadata   Json?            @map("mention_metadata")
+  isMention         Boolean          @default(false) @map("is_mention")
+  quotedMessageId   String?          @map("quoted_message_id")
+  processingStatus  ProcessingStatus @default(RECEIVED) @map("processing_status")
+  consumedByJobId   String?          @map("consumed_by_job_id")
+  createdAt         DateTime         @default(now()) @map("created_at")
+
+  @@unique([channel, externalMessageId])
+  @@index([conversationId, senderExternalId, timestamp])
+  @@index([consumedByJobId])
+  @@map("incoming_messages")
+}
+
+model ResponseJob {
+  id                  String         @id @default(uuid())
+  conversationId      String         @map("conversation_id")
+  conversation        Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderExternalId    String         @map("sender_external_id")
+  triggeringMessageId String?        @map("triggering_message_id")
+  normalizedQuestion  String?        @map("normalized_question")
+  intent              String?
+  contextMessageIds   String[]       @map("context_message_ids")
+  previousJobId       String?        @map("previous_job_id")
+  retrievedChunkIds   String[]       @map("retrieved_chunk_ids")
+  exampleIdsUsed      String[]       @map("example_ids_used")
+  draftAnswer         String?        @map("draft_answer")
+  approvedAnswer      String?        @map("approved_answer")
+  sourceRefs          Json?          @map("source_refs")
+  evidenceSufficient  Boolean?       @map("evidence_sufficient")
+  confidence          Float?
+  status              ResponseStatus @default(GENERATING)
+  autoApproved        Boolean        @default(false) @map("auto_approved")
+  reviewerNotes       String?        @map("reviewer_notes")
+  lastError           String?        @map("last_error")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+  approvedById        String?        @map("approved_by")
+  approvedBy          Administrator? @relation("ApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt          DateTime?      @map("approved_at")
+  sentAt              DateTime?      @map("sent_at")
+
+  drafts   ResponseDraft[]
+  delivery MessageDelivery?
+  usage    AiUsage[]
+  example  ApprovedAnswerExample?
+
+  @@index([status, createdAt])
+  @@index([conversationId, senderExternalId, createdAt])
+  @@map("response_jobs")
+}
+
+model ResponseDraft {
+  id            String      @id @default(uuid())
+  responseJobId String      @map("response_job_id")
+  responseJob   ResponseJob @relation(fields: [responseJobId], references: [id], onDelete: Cascade)
+  content       String
+  reason        String      @default("initial")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@index([responseJobId])
+  @@map("response_drafts")
+}
+
+model ApprovedAnswerExample {
+  id                 String                   @id @default(uuid())
+  responseJobId      String?                  @unique @map("response_job_id")
+  responseJob        ResponseJob?             @relation(fields: [responseJobId], references: [id], onDelete: SetNull)
+  originalQuestion   String                   @map("original_question")
+  contextSnapshot    Json?                    @map("context_snapshot")
+  normalizedQuestion String                   @map("normalized_question")
+  approvedAnswer     String                   @map("approved_answer")
+  originalDraft      String?                  @map("original_draft")
+  wasEdited          Boolean                  @default(false) @map("was_edited")
+  editSummary        Json?                    @map("edit_summary")
+  reviewerNotes      String?                  @map("reviewer_notes")
+  transcriptSources  Json?                    @map("transcript_sources")
+  moduleName         String?                  @map("module_name")
+  topicTags          String[]                 @map("topic_tags")
+  language           String?
+  channel            Channel?
+  reusable           Boolean                  @default(false)
+  enabled            Boolean                  @default(true)
+  qualityStatus      String                   @default("approved") @map("quality_status")
+  usefulnessScore    Int?                     @map("usefulness_score")
+  searchTsv          Unsupported("tsvector")? @map("search_tsv")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+
+  @@index([reusable, enabled])
+  @@index([searchTsv], type: Gin, map: "approved_answer_examples_search_tsv_idx")
+  @@map("approved_answer_examples")
+}
+
+model MessageDelivery {
+  id                String         @id @default(uuid())
+  responseJobId     String         @unique @map("response_job_id")
+  responseJob       ResponseJob    @relation(fields: [responseJobId], references: [id], onDelete: Cascade)
+  externalMessageId String?        @map("external_message_id")
+  status            DeliveryStatus @default(QUEUED)
+  attempts          Int            @default(0)
+  lastError         String?        @map("last_error")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  sentAt            DateTime?      @map("sent_at")
+
+  @@map("message_deliveries")
+}
+
+model ApplicationSetting {
+  id          String         @id @default(uuid())
+  key         String         @unique
+  value       Json
+  updatedById String?        @map("updated_by")
+  updatedBy   Administrator? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  @@map("application_settings")
+}
+
+model AuditLog {
+  id              String         @id @default(uuid())
+  administratorId String?        @map("administrator_id")
+  administrator   Administrator? @relation(fields: [administratorId], references: [id], onDelete: SetNull)
+  action          String
+  resourceType    String?        @map("resource_type")
+  resourceId      String?        @map("resource_id")
+  metadata        Json?
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model AiUsage {
+  id            String       @id @default(uuid())
+  responseJobId String?      @map("response_job_id")
+  responseJob   ResponseJob? @relation(fields: [responseJobId], references: [id], onDelete: SetNull)
+  provider      String
+  model         String
+  purpose       String       @default("answer")
+  inputTokens   Int          @map("input_tokens")
+  outputTokens  Int          @map("output_tokens")
+  estimatedCost Decimal      @map("estimated_cost") @db.Decimal(12, 6)
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("ai_usage")
+}
+
+model Job {
+  id          String    @id @default(uuid())
+  type        String
+  dedupeKey   String?   @map("dedupe_key")
+  payload     Json
+  status      JobStatus @default(PENDING)
+  runAt       DateTime  @default(now()) @map("run_at")
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5) @map("max_attempts")
+  lastError   String?   @map("last_error")
+  lockedAt    DateTime? @map("locked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, runAt])
+  @@index([type, dedupeKey, status])
+  @@map("jobs")
+}

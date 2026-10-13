@@ -1,0 +1,32 @@
+# Production-style stack. Uses a hosted Postgres via DATABASE_URL by default;
+# uncomment the "db" service to run Postgres on the same VPS instead.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: server/.env
+    environment:
+      NODE_ENV: production
+      ENABLE_DEV_ROUTES: "false"
+    ports:
+      - "127.0.0.1:3000:3000" # put a TLS reverse proxy (Caddy/Nginx) in front
+    volumes:
+      - uploads:/data/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  # db:
+  #   image: postgres:16
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_USER: tutor
+  #     POSTGRES_PASSWORD: change-me
+  #     POSTGRES_DB: tutor
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+
+volumes:
+  uploads:
+  # pgdata:
