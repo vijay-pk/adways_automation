@@ -6,6 +6,8 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ZodError } from 'zod';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
+import { prisma } from './db/prisma.js';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { HttpError } from './lib/errors.js';
@@ -41,9 +43,17 @@ export function createApp() {
     next();
   });
 
-  app.get('/api/health', (_req, res) => {
-    res.json({ ok: true });
+  // Liveness + database reachability; used by Docker health checks and deploy scripts.
+  app.get('/api/health', async (_req, res) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ ok: true, db: 'ok' });
+    } catch {
+      res.status(503).json({ ok: false, db: 'unreachable' });
+    }
   });
+  // Broad per-IP ceiling for the whole API (login has its own stricter limiter).
+  app.use('/api', rateLimit({ windowMs: 60_000, limit: env.NODE_ENV === 'test' ? 100_000 : 600, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'Too many requests' } }));
   app.use('/api/auth', authRouter);
   app.use('/api/chat', webChatRouter);
 

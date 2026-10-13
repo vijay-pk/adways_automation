@@ -1,32 +1,56 @@
-# Production-style stack. Uses a hosted Postgres via DATABASE_URL by default;
-# uncomment the "db" service to run Postgres on the same VPS instead.
+# Production stack for the VPS: app (API + worker + dashboard) behind Caddy (HTTPS).
+# Database and transcript files live in Supabase; this server keeps no business data.
+# Usage: see docs/DEPLOYMENT.md (deploy/deploy.sh builds, migrates and starts it).
+name: course-tutor
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   app:
     build: .
+    image: ${TUTOR_IMAGE:-course-tutor:latest}
     restart: unless-stopped
-    env_file: server/.env
+    env_file: server/.env.production
     environment:
       NODE_ENV: production
       ENABLE_DEV_ROUTES: "false"
-    ports:
-      - "127.0.0.1:3000:3000" # put a TLS reverse proxy (Caddy/Nginx) in front
+      PORT: "3000"
+      SERVE_WEB_DIST: /app/web/dist
+      UPLOAD_DIR: /data/uploads
+    expose:
+      - "3000"
     volumes:
       - uploads:/data/uploads
+      - ./backups:/backups
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
+      start_period: 60s
       retries: 3
-  # db:
-  #   image: postgres:16
-  #   restart: unless-stopped
-  #   environment:
-  #     POSTGRES_USER: tutor
-  #     POSTGRES_PASSWORD: change-me
-  #     POSTGRES_DB: tutor
-  #   volumes:
-  #     - pgdata:/var/lib/postgresql/data
+    logging: *logging
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging: *logging
 
 volumes:
   uploads:
-  # pgdata:
+  caddy_data:
+  caddy_config:

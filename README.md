@@ -37,7 +37,7 @@ npm run db:migrate                      # apply migrations
 npm run admin:create                    # first super admin from INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD
 npm run dev:server                      # API + worker on :3000
 npm run dev:web                         # dashboard on http://localhost:5173 (proxies /api)
-npm test                                # 89 automated tests (mock AI + mock messaging only)
+npm test                                # 96 automated tests (mock AI + mock messaging only)
 ```
 
 Set `ENABLE_DEV_ROUTES=true` to get the **Mock adapter simulator** on the Messaging page, which lets you send
@@ -56,7 +56,17 @@ Student website chat: `http://localhost:5173/chat`. Issue a code on **Students &
 - Unofficial WhatsApp Web automation can break WhatsApp's Terms of Service and get the number banned.
   Its adapter is not included; the setting refuses to activate it.
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for VPS deployment, backups, and adapter migration.
+## Production
+
+Production runs on its own VPS at https://automation.adwaysacademy.com (WordPress stays untouched), with
+Supabase for the database and transcript files and Groq for answers.
+
+- Database: paste [`supabase/install.sql`](supabase/install.sql) into the Supabase SQL Editor once.
+- Environment: [`server/.env.production.example`](server/.env.production.example).
+- Server, DNS, HTTPS, deploy/rollback, backups: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [`deploy/`](deploy/).
+
+After changing migrations, regenerate the install script with `npm run supabase:sql --workspace server`
+(a test fails if it is out of date).
 
 ## Layout
 

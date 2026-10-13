@@ -6,7 +6,15 @@ import { resolve } from 'node:path';
 
 const dir = resolve(process.env.LOCAL_PG_DIR ?? '.localdb');
 const port = Number(process.env.LOCAL_PG_PORT ?? 5433);
-const pg = new EmbeddedPostgres({ databaseDir: dir, user: 'tutor', password: 'tutor_local', port, persistent: true });
+const pg = new EmbeddedPostgres({
+  databaseDir: dir,
+  user: 'tutor',
+  password: 'tutor_local',
+  port,
+  persistent: true,
+  // UTF-8 like Supabase; the Windows default (WIN1252) rejects non-Latin text.
+  initdbFlags: ['--encoding=UTF8', '--locale=C'],
+});
 if (!existsSync(dir)) await pg.initialise();
 await pg.start();
 try { await pg.createDatabase('tutor'); } catch { /* exists */ }

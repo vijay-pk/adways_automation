@@ -11,6 +11,7 @@ import { hashPassword, passwordPolicy } from '../auth/password.js';
 import { issueResetToken, publicAdmin } from '../auth/authService.js';
 import { maskSecret } from '../lib/crypto.js';
 import { destroyAllSessions } from '../auth/sessions.js';
+import { integrationHealth } from './health.js';
 
 export const adminRouter = Router();
 
@@ -49,6 +50,21 @@ adminRouter.patch('/admins/:id', requireRole(...SUPER), async (req, res) => {
   res.json(publicAdmin(updated));
 });
 
+/** Permanently removes an administrator. Their audit entries and approvals remain (actor set to null). */
+adminRouter.delete('/admins/:id', requireRole(...SUPER), async (req, res) => {
+  const id = req.params.id as string;
+  if (id === req.auth!.admin.id) throw badRequest('You cannot remove your own account');
+  const target = await prisma.administrator.findUnique({ where: { id } });
+  if (!target) throw notFound();
+  if (target.role === 'SUPER_ADMIN' && target.isActive) {
+    const supers = await prisma.administrator.count({ where: { role: 'SUPER_ADMIN', isActive: true } });
+    if (supers <= 1) throw badRequest('Cannot remove the last active super admin');
+  }
+  await audit(req.auth!.admin.id, 'admin.delete', 'administrator', id, { email: target.email, role: target.role });
+  await prisma.administrator.delete({ where: { id } });
+  res.json({ ok: true });
+});
+
 /** Issues a one-time password reset token for another administrator (shown once). */
 adminRouter.post('/admins/:id/reset-token', requireRole(...SUPER), async (req, res) => {
   const id = req.params.id as string;
@@ -68,6 +84,11 @@ adminRouter.get('/audit', async (req, res) => {
     prisma.auditLog.count({ where }),
   ]);
   res.json({ items, total });
+});
+
+adminRouter.get('/health', async (req, res) => {
+  const checks = await integrationHealth(req.query.refresh === '1' && req.auth!.admin.role === 'SUPER_ADMIN');
+  res.json({ ok: checks.every((c) => c.ok), checks });
 });
 
 /** Provider configuration and system status. Secrets are never returned in full. */

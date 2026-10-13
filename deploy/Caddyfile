@@ -1,0 +1,26 @@
+# Reverse proxy + automatic HTTPS (Let's Encrypt) for the tutor only.
+# The WordPress site at adwaysacademy.com is hosted elsewhere and is not touched.
+automation.adwaysacademy.com {
+	encode zstd gzip
+
+	request_body {
+		max_size 30MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	reverse_proxy app:3000 {
+		health_uri /api/health
+		health_interval 30s
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

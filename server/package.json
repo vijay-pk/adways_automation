@@ -14,6 +14,7 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:generate": "prisma generate",
     "admin:create": "tsx src/cli/createAdmin.ts",
+    "supabase:sql": "node scripts/build-supabase-sql.mjs",
     "admin:reset-password": "tsx src/cli/resetPassword.ts"
   },
   "dependencies": {

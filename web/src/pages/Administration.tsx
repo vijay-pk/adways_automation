@@ -31,6 +31,7 @@ export function AdministrationPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         {sup ? <AdminsCard /> : <Card title="Administrators"><p className="text-sm text-slate-500">Only super admins manage roles.</p></Card>}
         <div className="space-y-4">
+          <HealthCard />
           <SystemCard />
           <EmergencyControls />
           <Card title="Your account">
@@ -52,6 +53,7 @@ function AdminsCard() {
   const refresh = () => void qc.invalidateQueries({ queryKey: ['admins'] });
   const create = useMutation({ mutationFn: () => api.post('/api/admin/admins', form), onSuccess: () => { setForm({ email: '', role: 'REVIEWER', temporaryPassword: '' }); refresh(); } });
   const update = useMutation({ mutationFn: ({ id, body }: { id: string; body: object }) => api.patch(`/api/admin/admins/${id}`, body), onSuccess: refresh });
+  const remove = useMutation({ mutationFn: (id: string) => api.del(`/api/admin/admins/${id}`), onSuccess: refresh });
   const reset = useMutation({
     mutationFn: (a: Admin) => api.post<{ token: string }>(`/api/admin/admins/${a.id}/reset-token`).then((r) => ({ email: a.email, token: r.token })),
     onSuccess: setToken,
@@ -76,6 +78,11 @@ function AdminsCard() {
               </Select>
               <Button variant="ghost" onClick={() => update.mutate({ id: a.id, body: { isActive: !a.isActive } })}>{a.isActive ? 'Deactivate' : 'Activate'}</Button>
               <Button variant="ghost" onClick={() => reset.mutate(a)}>Reset token</Button>
+              {a.id !== me?.id && (
+                <Button variant="ghost" className="text-red-600" onClick={() => confirm(`Permanently remove ${a.email}? Their audit history is kept.`) && remove.mutate(a.id)}>
+                  Remove
+                </Button>
+              )}
             </div>
           </li>
         ))}
@@ -94,12 +101,64 @@ function AdminsCard() {
             <option value="VIEWER">Viewer</option>
             <option value="SUPER_ADMIN">Super admin</option>
           </Select>
-          <Input type="password" placeholder="temporary password" value={form.temporaryPassword} onChange={(e) => setForm({ ...form, temporaryPassword: e.target.value })} />
+          <Input type="password" autoComplete="new-password" placeholder="temporary password" value={form.temporaryPassword} onChange={(e) => setForm({ ...form, temporaryPassword: e.target.value })} />
         </div>
         <p className="text-xs text-slate-400">They must change the temporary password at first login.</p>
         <Button disabled={create.isPending} onClick={() => create.mutate()}>Create</Button>
       </div>
-      <ErrorText error={create.error ?? update.error ?? reset.error} />
+      <ErrorText error={create.error ?? update.error ?? reset.error ?? remove.error} />
+    </Card>
+  );
+}
+
+interface HealthCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+  latencyMs?: number;
+}
+
+const HEALTH_LABEL: Record<string, string> = {
+  database: 'Database (Supabase)',
+  ai_generation: 'AI provider (Groq)',
+  embeddings: 'Embeddings',
+  file_storage: 'Transcript storage',
+  messaging: 'Messaging integration',
+  job_queue: 'Background jobs',
+};
+
+function HealthCard() {
+  const { admin } = useAuth();
+  const [force, setForce] = useState(0);
+  const health = useQuery({
+    queryKey: ['health', force],
+    queryFn: () => api.get<{ ok: boolean; checks: HealthCheck[] }>(`/api/admin/health${force ? '?refresh=1' : ''}`),
+    refetchInterval: 60_000,
+  });
+  return (
+    <Card
+      title={<span className="flex items-center gap-2">Integration health {health.data && <Badge tone={health.data.ok ? 'green' : 'red'}>{health.data.ok ? 'all ok' : 'attention'}</Badge>}</span>}
+      actions={isSuper(admin) ? <Button variant="secondary" onClick={() => setForce((n) => n + 1)}>Re-check</Button> : undefined}
+    >
+      {!health.data ? (
+        <Empty>{health.isLoading ? 'Checking…' : 'Unavailable'}</Empty>
+      ) : (
+        <ul className="space-y-1.5 text-sm">
+          {health.data.checks.map((c) => (
+            <li key={c.name} className="flex flex-wrap items-start justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <Badge tone={c.ok ? 'green' : 'red'}>{c.ok ? 'ok' : 'error'}</Badge>
+                {HEALTH_LABEL[c.name] ?? c.name}
+              </span>
+              <span className="max-w-xs text-right text-xs text-slate-500">
+                {c.detail}
+                {c.latencyMs != null && ` · ${c.latencyMs} ms`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <ErrorText error={health.error} />
     </Card>
   );
 }

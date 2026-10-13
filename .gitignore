@@ -11,3 +11,6 @@ server/.localdb/
 .playwright-mcp/
 .localdb.log
 .claude/settings.local.json
+!.env.production.example
+backups/
+deploy/.releases

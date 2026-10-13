@@ -4,6 +4,7 @@ import { getSettings } from '../settings/settingsService.js';
 import { getSenderForChannel } from '../messaging/registry.js';
 import { DeferError } from '../jobs/worker.js';
 import { logger } from '../lib/logger.js';
+import { audit } from '../audit/auditService.js';
 
 const PAUSE_RECHECK_MS = 30_000;
 
@@ -48,8 +49,9 @@ export async function deliverResponse(queueJob: Job) {
     ? await prisma.incomingMessage.findUnique({ where: { id: job.triggeringMessageId } })
     : null;
 
+  let result: { externalMessageId: string };
   try {
-    const result = await adapter.sendMessage(
+    result = await adapter.sendMessage(
       {
         channel: job.conversation.channel,
         chatId: job.conversation.externalChatId,
@@ -59,21 +61,33 @@ export async function deliverResponse(queueJob: Job) {
       },
       job.approvedAnswer,
     );
-    const now = new Date();
-    await prisma.$transaction([
-      prisma.messageDelivery.update({
-        where: { id: job.delivery.id },
-        data: { status: 'SENT', externalMessageId: result.externalMessageId, sentAt: now, lastError: null },
-      }),
-      prisma.responseJob.update({ where: { id: job.id }, data: { status: 'SENT', sentAt: now, lastError: null } }),
-    ]);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const final = queueJob.attempts >= queueJob.maxAttempts;
     logger.warn({ responseJobId: job.id, attempt: queueJob.attempts, final, err: message }, 'delivery failed');
     await markFailed(job.id, job.delivery.id, message, final);
+    await audit(null, final ? 'message.send_failed' : 'message.send_retrying', 'response_job', job.id, { attempt: queueJob.attempts, error: message.slice(0, 300) });
     if (!final) throw err; // queue retries with exponential backoff
+    return;
   }
+
+  // The message is out. From here on nothing may move the job back to APPROVED: if recording
+  // fails, the job stays SENDING (never re-sent automatically) and an admin can see it.
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.messageDelivery.update({
+      where: { id: job.delivery.id },
+      data: { status: 'SENT', externalMessageId: result.externalMessageId, sentAt: now, lastError: null },
+    }),
+    prisma.responseJob.update({ where: { id: job.id }, data: { status: 'SENT', sentAt: now, lastError: null } }),
+  ]);
+  await audit(null, 'message.sent', 'response_job', job.id, {
+    channel: job.conversation.channel,
+    chatType: job.conversation.chatType,
+    externalMessageId: result.externalMessageId,
+    approvedBy: job.approvedById,
+    autoApproved: job.autoApproved,
+  }).catch((e) => logger.error({ err: e }, 'audit write failed after send'));
 }
 
 async function markFailed(jobId: string, deliveryId: string, error: string, final: boolean) {

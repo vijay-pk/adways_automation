@@ -1,0 +1,4 @@
+# Keep line endings stable so Prisma migration checksums match on every OS.
+*.sql text eol=lf
+*.sh text eol=lf
+Caddyfile text eol=lf
