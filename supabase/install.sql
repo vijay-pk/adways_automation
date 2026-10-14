@@ -16,7 +16,7 @@
 --   • Creates no users and no admin accounts (use `npm run admin:create` on the server).
 --
 -- Safe to run once. If the schema is already installed it stops without changing anything.
--- Migrations included: 20261013063109_init, 20261013070000_fulltext_search, 20261013090000_knowledge_base
+-- Migrations included: 20261013063109_init, 20261013070000_fulltext_search, 20261013090000_knowledge_base, 20261014090000_delivery_provider_status
 -- =====================================================================
 
 BEGIN;
@@ -470,7 +470,7 @@ ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_administrator_id_fkey" FOREI
 ALTER TABLE "ai_usage" ADD CONSTRAINT "ai_usage_response_job_id_fkey" FOREIGN KEY ("response_job_id") REFERENCES "response_jobs"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 INSERT INTO "_prisma_migrations" ("id", "checksum", "finished_at", "migration_name", "started_at", "applied_steps_count")
-VALUES ('f5913e41-1581-4d0f-814a-a54933c0c51b', '4762f340ee39ab25d5bad0b8165745db8e3968b7c7cb1ceb99b9941925c40bfa', now(), '20261013063109_init', now(), 1);
+VALUES ('a94bb45a-d758-4731-8cf3-dd155c781af7', '4762f340ee39ab25d5bad0b8165745db8e3968b7c7cb1ceb99b9941925c40bfa', now(), '20261013063109_init', now(), 1);
 
 -- ---------------------------------------------------------------------
 -- Migration: 20261013070000_fulltext_search
@@ -495,7 +495,7 @@ CREATE UNIQUE INDEX "jobs_active_dedupe_key" ON "jobs" ("type", "dedupe_key")
   WHERE "status" = 'PENDING' AND "dedupe_key" IS NOT NULL;
 
 INSERT INTO "_prisma_migrations" ("id", "checksum", "finished_at", "migration_name", "started_at", "applied_steps_count")
-VALUES ('055654ba-a2fe-4d04-81ba-6c5ae918d8a6', '991da0bca212218bfd5992c02c58ccfcad944481863ba35f7172e1b85500d813', now(), '20261013070000_fulltext_search', now(), 1);
+VALUES ('91fb0c6c-c1ed-41fa-8f09-f1fb409c9f1d', '991da0bca212218bfd5992c02c58ccfcad944481863ba35f7172e1b85500d813', now(), '20261013070000_fulltext_search', now(), 1);
 
 -- ---------------------------------------------------------------------
 -- Migration: 20261013090000_knowledge_base
@@ -571,7 +571,22 @@ BEGIN
 END $$;
 
 INSERT INTO "_prisma_migrations" ("id", "checksum", "finished_at", "migration_name", "started_at", "applied_steps_count")
-VALUES ('37e8cca6-5c8f-4671-bcd7-623c1c756437', '5acac77831942845850b5899fd93284d77d6893dc229a6e8e2296a1c4140e135', now(), '20261013090000_knowledge_base', now(), 1);
+VALUES ('c6386525-76ac-488b-bf51-bd4b6f67ec4f', '5acac77831942845850b5899fd93284d77d6893dc229a6e8e2296a1c4140e135', now(), '20261013090000_knowledge_base', now(), 1);
+
+-- ---------------------------------------------------------------------
+-- Migration: 20261014090000_delivery_provider_status
+-- ---------------------------------------------------------------------
+-- Provider delivery receipts (WhatsApp Cloud API webhook: sent / delivered / read / failed).
+
+ALTER TABLE "message_deliveries"
+  ADD COLUMN "provider_status" TEXT,
+  ADD COLUMN "provider_status_at" TIMESTAMP(3);
+
+-- Receipts and quoted replies look deliveries up by the platform message id.
+CREATE INDEX "message_deliveries_external_message_id_idx" ON "message_deliveries" ("external_message_id");
+
+INSERT INTO "_prisma_migrations" ("id", "checksum", "finished_at", "migration_name", "started_at", "applied_steps_count")
+VALUES ('d6288cb7-974d-449a-9ce2-9f1367e5cc24', '48be1310ccc26af89199460542a4f9bd3a7e795d3d7e938bada14c4f229f47fd', now(), '20261014090000_delivery_provider_status', now(), 1);
 
 -- ---------------------------------------------------------------------
 -- Access control: only the server (table owner via the database connection) may use this schema.
@@ -593,7 +608,7 @@ $roles$;
 
 COMMIT;
 
--- Verification (should list 3 migrations and the embedding column type):
+-- Verification (should list 4 migrations and the embedding column type):
 SELECT migration_name, finished_at FROM tutor."_prisma_migrations" ORDER BY migration_name;
 SELECT udt_schema || '.' || udt_name AS embedding_type
 FROM information_schema.columns

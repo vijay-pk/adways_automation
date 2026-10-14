@@ -22,6 +22,7 @@ import { groupRouter, studentRouter } from './students/routes.js';
 import { dashboardRouter } from './dashboard/routes.js';
 import { webChatRouter } from './webchat/routes.js';
 import { devRouter } from './messaging/devRoutes.js';
+import { cloudWebhookRouter } from './messaging/cloudWebhook.js';
 
 export function createApp() {
   const app = express();
@@ -31,6 +32,8 @@ export function createApp() {
   if (env.NODE_ENV !== 'test') {
     app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === '/api/health' } }));
   }
+  // WhatsApp Cloud API webhook needs the raw body for signature checks, so it sits before the JSON parser.
+  app.use('/api/webhooks/whatsapp', cloudWebhookRouter);
   // Pasted transcripts use their own larger JSON limit (see transcripts/routes.ts).
   const json = express.json({ limit: '1mb' });
   app.use((req, res, next) => (req.path === '/api/transcripts/text' ? next() : json(req, res, next)));

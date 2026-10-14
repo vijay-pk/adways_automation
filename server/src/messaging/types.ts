@@ -65,6 +65,10 @@ export interface MessagingAdapter {
   getStatus(): Promise<ConnectionStatus>;
   sendMessage(destination: MessageDestination, text: string): Promise<SendResult>;
   onMessage(handler: MessageHandler): void;
+  /** Linked-device adapters: current login QR payload while waiting for a scan, else null. */
+  loginQr?(): string | null;
+  /** Linked-device adapters: unlink the device and delete the stored session. */
+  logout?(): Promise<void>;
 }
 
 export class CapabilityError extends Error {}

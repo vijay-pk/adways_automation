@@ -80,8 +80,11 @@ Tests:
 - `supabase/install.sql` is generated and only for a fresh install. It refuses to run if `tutor._prisma_migrations` exists; upgrades use `db:migrate`.
 - Compliance guards are intentional:
   - `platform_data_ai_training_allowed` is locked to `false`;
-  - the WhatsApp Web adapter is not included (Milestone 8) and refuses activation;
-  - the Cloud API adapter is a capabilities-only stub.
+  - the experimental WhatsApp Web adapter (`messaging/whatsappWebAdapter.ts`, Baileys, loaded lazily) activates only after `whatsapp_web_risk_acknowledged`; the Cloud API adapter only after `cloud_api_policy_acknowledged`.
+- WhatsApp adapters (see `docs/WHATSAPP.md`):
+  - WhatsApp Web session files in `WHATSAPP_WEB_SESSION_DIR` are credentials. Baileys' logger stays silent, and the login QR is served only by the super-admin `/api/settings/messaging/qr`. Tests inject a fake socket via `setWhatsAppWebOptions`.
+  - The Cloud API webhook (`messaging/cloudWebhook.ts`, `/api/webhooks/whatsapp`) is mounted before the JSON parser because it verifies `X-Hub-Signature-256` against the raw body. Tests use `setCloudConfig` and stub `fetch`. `vitest.config.ts` blanks the real `WHATSAPP_CLOUD_*` values.
+  - The Cloud API declares no group support; groups fall back to the website chat.
 - `ENABLE_DEV_ROUTES=true` enables the mock-adapter simulator on the Messaging page. The server refuses to start with it in production.
 
 Production (VPS + Caddy + Docker, Supabase DB/storage, Groq): see `docs/DEPLOYMENT.md`, `deploy/`, `server/.env.production.example`.

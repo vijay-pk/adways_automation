@@ -39,6 +39,16 @@ const schema = z.object({
     .transform((v) => v === 'true'),
   WORKER_POLL_MS: z.coerce.number().default(1000),
   SERVE_WEB_DIST: z.string().optional(),
+  // Experimental WhatsApp Web adapter: linked-device session files (credentials; keep private, never commit).
+  WHATSAPP_WEB_SESSION_DIR: z.string().default('.wa-session'),
+  // Official WhatsApp Business Platform (Cloud API). All optional until the adapter is enabled.
+  WHATSAPP_CLOUD_API_VERSION: z.string().default('v23.0'),
+  WHATSAPP_CLOUD_GRAPH_URL: z.string().url().default('https://graph.facebook.com'),
+  WHATSAPP_CLOUD_PHONE_NUMBER_ID: z.string().optional(),
+  WHATSAPP_CLOUD_BUSINESS_ACCOUNT_ID: z.string().optional(),
+  WHATSAPP_CLOUD_ACCESS_TOKEN: z.string().optional(),
+  WHATSAPP_CLOUD_APP_SECRET: z.string().optional(),
+  WHATSAPP_CLOUD_VERIFY_TOKEN: z.string().optional(),
   ENABLE_DEV_ROUTES: z
     .string()
     .default('false')

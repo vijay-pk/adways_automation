@@ -11,8 +11,12 @@ import {
   assertAdapterAllowed,
   connectActive,
   disconnectActive,
+  getLoginQr,
+  logoutActive,
 } from '../messaging/registry.js';
 import { queueStats } from '../jobs/queue.js';
+import QRCode from 'qrcode';
+import { env } from '../config/env.js';
 
 export const settingsRouter = Router();
 
@@ -80,5 +84,33 @@ settingsRouter.post('/emergency', requireRole(...CAN_REVIEW), async (req, res) =
 
 settingsRouter.get('/messaging', async (_req, res) => {
   const [overview, settings] = await Promise.all([adapterOverview(), getSettings()]);
-  res.json({ ...overview, queue: await queueStats(), webChatEnabled: settings.web_chat_enabled });
+  res.json({
+    ...overview,
+    queue: await queueStats(),
+    webChatEnabled: settings.web_chat_enabled,
+    cloudWebhookUrl: `${env.APP_ORIGIN.replace(/\/+$/, '')}/api/webhooks/whatsapp`,
+  });
+});
+
+/** Login QR for a linked-device adapter, as an image. It links a device to this server, so super admins only. */
+settingsRouter.get('/messaging/qr', requireRole(...SUPER), async (_req, res) => {
+  const qr = getLoginQr();
+  res.set('Cache-Control', 'no-store');
+  res.json({ qr: qr ? await QRCode.toDataURL(qr, { margin: 1, width: 280 }) : null });
+});
+
+/** Starts (or retries) the active adapter's connection, e.g. to show a fresh QR code. */
+settingsRouter.post('/messaging/connect', requireRole(...SUPER), async (req, res) => {
+  const settings = await getSettings();
+  if (!settings.messaging_connection_enabled) throw badRequest('Messaging connection is switched off in emergency controls');
+  await connectActive();
+  await audit(req.auth!.admin.id, 'messaging.connect', 'settings');
+  res.json(await adapterOverview());
+});
+
+/** Unlinks the WhatsApp Web device and deletes the stored session. */
+settingsRouter.post('/messaging/logout', requireRole(...SUPER), async (req, res) => {
+  await logoutActive();
+  await audit(req.auth!.admin.id, 'messaging.logout', 'settings');
+  res.json(await adapterOverview());
 });

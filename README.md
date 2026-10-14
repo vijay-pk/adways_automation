@@ -15,8 +15,9 @@ Messaging goes through replaceable adapters; all state lives in PostgreSQL.
 | Context engine: same sender + same chat + time window, debounced bursts, LLM correlation into one question, follow-up detection, consumed-message tracking | Done |
 | AI Reply Mode (automatic / approval), approval state machine, idempotent approve, edit/reject/regenerate/request evidence/mark reviewed, safe delivery retry, emergency stops | Done |
 | Approved Answer Memory: draft vs final, reusable/private, tags, enable/disable/delete, newest-correction-wins retrieval, influence tracking, correction patterns | Done |
-| Mock adapter, Cloud API **stub** (capabilities only), website chat fallback, student CSV import/export, data deletion, retention job, Docker | Done |
-| WhatsApp Web adapter (M8), production hardening + backup automation (M9), official Cloud API adapter (M10) | **Not built** |
+| Mock adapter, website chat fallback, student CSV import/export, data deletion, retention job, Docker | Done |
+| WhatsApp Web adapter (experimental, QR login, groups + mentions) and official Cloud API adapter (signed webhook, delivery receipts) — see [docs/WHATSAPP.md](docs/WHATSAPP.md) | Done |
+| Production hardening + backup automation (M9) | **Not built** |
 
 ## Quick start (local development)
 
@@ -54,7 +55,7 @@ Student website chat: `http://localhost:5173/chat`. Issue a code on **Students &
 - Approved Answer Memory is retrieval only. Nothing is ever sent to a provider for training; the
   `platform_data_ai_training_allowed` setting is locked to `false`.
 - Unofficial WhatsApp Web automation can break WhatsApp's Terms of Service and get the number banned.
-  Its adapter is not included; the setting refuses to activate it.
+  The adapter only activates after a super admin acknowledges that risk; use a separate test number.
 
 ## Production
 

@@ -8,5 +8,8 @@ export default function setup() {
     stdio: 'pipe',
     env: { ...process.env, DATABASE_URL: url, DIRECT_URL: url },
   });
-  return () => rmSync('.test-uploads', { recursive: true, force: true });
+  return () => {
+    rmSync('.test-uploads', { recursive: true, force: true });
+    rmSync('.test-wa-session', { recursive: true, force: true });
+  };
 }

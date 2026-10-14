@@ -107,6 +107,17 @@ export interface MessagingOverview {
   lastError: string | null;
   capabilities: Capabilities | null;
   webChat: { capabilities: Capabilities };
+  login: { supported: boolean; qrAvailable: boolean };
+  cloud: {
+    phoneNumberId: string | null;
+    businessAccountId: string | null;
+    apiVersion: string;
+    accessTokenSet: boolean;
+    appSecretSet: boolean;
+    verifyTokenSet: boolean;
+    missing: string[];
+  };
+  cloudWebhookUrl?: string;
   queue?: { type: string; status: string; count: number }[];
   webChatEnabled?: boolean;
 }

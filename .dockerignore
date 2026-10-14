@@ -7,3 +7,5 @@ server/uploads
 server/.test-uploads
 .playwright-mcp
 .git
+server/.wa-session
+server/.test-wa-session

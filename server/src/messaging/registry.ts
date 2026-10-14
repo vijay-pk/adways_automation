@@ -1,7 +1,8 @@
 import type { Channel } from '@prisma/client';
 import type { MessageHandler, MessagingAdapter } from './types.js';
 import { MockMessagingAdapter } from './mockAdapter.js';
-import { WhatsAppCloudApiAdapter } from './cloudApiAdapter.js';
+import { WhatsAppCloudApiAdapter, cloudConfigSummary } from './cloudApiAdapter.js';
+import { WhatsAppWebAdapter, type WaSocketFactory } from './whatsappWebAdapter.js';
 import { WebChatAdapter } from './webChatAdapter.js';
 import { getSettings, type Settings } from '../settings/settingsService.js';
 import { badRequest } from '../lib/errors.js';
@@ -26,6 +27,12 @@ export const setMockAdapter = (m: MockMessagingAdapter) => {
   mockSingleton = m;
 };
 
+let webOptions: { sessionDir?: string; socketFactory?: WaSocketFactory } = {};
+/** Test hook: inject a fake WhatsApp Web socket instead of Baileys. */
+export const setWhatsAppWebOptions = (o: typeof webOptions) => {
+  webOptions = o;
+};
+
 export function createAdapter(name: AdapterName): MessagingAdapter {
   switch (name) {
     case 'mock':
@@ -33,7 +40,7 @@ export function createAdapter(name: AdapterName): MessagingAdapter {
     case 'whatsapp_cloud':
       return new WhatsAppCloudApiAdapter();
     case 'whatsapp_web':
-      throw badRequest('The experimental WhatsApp Web adapter is not included in this build (Milestone 8).');
+      return new WhatsAppWebAdapter(webOptions);
   }
 }
 
@@ -112,5 +119,17 @@ export async function adapterOverview() {
     lastError,
     capabilities: active?.capabilities ?? null,
     webChat: { capabilities: webChat.capabilities },
+    // Linked-device login: whether a QR is waiting (the QR itself is served to super admins only).
+    login: active?.loginQr ? { supported: true, qrAvailable: !!active.loginQr() } : { supported: false, qrAvailable: false },
+    cloud: cloudConfigSummary(),
   };
+}
+
+/** Current login QR of the active adapter, or null. */
+export const getLoginQr = () => active?.loginQr?.() ?? null;
+
+/** Unlinks a linked-device adapter and deletes its session. */
+export async function logoutActive() {
+  if (!active?.logout) throw badRequest('The active adapter has no device session to log out of');
+  await active.logout();
 }

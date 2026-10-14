@@ -24,8 +24,8 @@ COPY --from=build /app/server/prisma server/prisma
 COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/web/dist web/dist
 WORKDIR /app/server
-ENV SERVE_WEB_DIST=/app/web/dist UPLOAD_DIR=/data/uploads PORT=3000
-RUN mkdir -p /data/uploads && chown -R node:node /data
+ENV SERVE_WEB_DIST=/app/web/dist UPLOAD_DIR=/data/uploads WHATSAPP_WEB_SESSION_DIR=/data/wa-session PORT=3000
+RUN mkdir -p /data/uploads /data/wa-session && chmod 700 /data/wa-session && chown -R node:node /data
 USER node
 EXPOSE 3000
 # Apply pending migrations, then start API + worker.

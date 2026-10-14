@@ -343,7 +343,10 @@ model MessageDelivery {
   lastError         String?        @map("last_error")
   createdAt         DateTime       @default(now()) @map("created_at")
   sentAt            DateTime?      @map("sent_at")
+  providerStatus    String?        @map("provider_status")
+  providerStatusAt  DateTime?      @map("provider_status_at")
 
+  @@index([externalMessageId])
   @@map("message_deliveries")
 }
 

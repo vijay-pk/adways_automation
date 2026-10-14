@@ -90,6 +90,33 @@ export async function deliverResponse(queueJob: Job) {
   }).catch((e) => logger.error({ err: e }, 'audit write failed after send'));
 }
 
+const RECEIPT_RANK: Record<string, number> = { sent: 1, delivered: 2, read: 3 };
+
+/**
+ * Records a provider delivery receipt (Cloud API webhook). Receipts can arrive out of order, so a
+ * lower one never overwrites a higher one; a late "failed" marks the reply FAILED where admins see it.
+ */
+export async function recordProviderStatus(e: { externalMessageId: string; status: string; timestamp: Date; error?: string }) {
+  const delivery = await prisma.messageDelivery.findFirst({ where: { externalMessageId: e.externalMessageId } });
+  if (!delivery) return false;
+  if (e.status === 'failed') {
+    const error = e.error ?? 'Delivery failed';
+    await prisma.$transaction([
+      prisma.messageDelivery.update({
+        where: { id: delivery.id },
+        data: { providerStatus: 'failed', providerStatusAt: e.timestamp, status: 'FAILED', lastError: error },
+      }),
+      prisma.responseJob.update({ where: { id: delivery.responseJobId }, data: { status: 'FAILED', lastError: error } }),
+    ]);
+    await audit(null, 'message.delivery_failed', 'response_job', delivery.responseJobId, { error: error.slice(0, 300) });
+    return true;
+  }
+  const rank = RECEIPT_RANK[e.status];
+  if (!rank || delivery.providerStatus === 'failed' || (RECEIPT_RANK[delivery.providerStatus ?? ''] ?? 0) >= rank) return true;
+  await prisma.messageDelivery.update({ where: { id: delivery.id }, data: { providerStatus: e.status, providerStatusAt: e.timestamp } });
+  return true;
+}
+
 async function markFailed(jobId: string, deliveryId: string, error: string, final: boolean) {
   await prisma.$transaction([
     prisma.messageDelivery.update({ where: { id: deliveryId }, data: { status: final ? 'FAILED' : 'QUEUED', lastError: error } }),

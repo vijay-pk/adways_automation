@@ -15,3 +15,5 @@ server/.localdb/
 backups/
 deploy/.releases
 transcript/
+.wa-session/
+.test-wa-session/

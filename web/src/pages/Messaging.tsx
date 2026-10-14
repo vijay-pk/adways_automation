@@ -40,7 +40,12 @@ function CapabilityList({ caps }: { caps: Capabilities }) {
 export function MessagingPage() {
   const { admin } = useAuth();
   const qc = useQueryClient();
-  const overview = useQuery({ queryKey: ['messaging'], queryFn: () => api.get<MessagingOverview>('/api/settings/messaging'), refetchInterval: 10_000 });
+  const overview = useQuery({
+    queryKey: ['messaging'],
+    queryFn: () => api.get<MessagingOverview>('/api/settings/messaging'),
+    // Poll faster while a device login is in progress so the QR and "connected" show up promptly.
+    refetchInterval: (q) => (q.state.data?.login.supported && q.state.data.status.state !== 'connected' ? 3_000 : 10_000),
+  });
   const settings = useQuery({ queryKey: ['settings'], queryFn: () => api.get<Settings>('/api/settings') });
   const save = useMutation({
     mutationFn: (patch: Partial<Settings>) => api.patch<Settings>('/api/settings', patch),
@@ -73,8 +78,8 @@ export function MessagingPage() {
                 <Field label="Active adapter" hint="Switching keeps all transcripts, approved answers, settings and history (stored in the database).">
                   <Select value={s.messaging_adapter} disabled={!sup || save.isPending} onChange={(e) => save.mutate({ messaging_adapter: e.target.value as Settings['messaging_adapter'] })}>
                     <option value="mock">Mock (development / testing)</option>
-                    <option value="whatsapp_cloud">WhatsApp Business Platform (official, not yet implemented)</option>
-                    <option value="whatsapp_web">WhatsApp Web (experimental, not included in this build)</option>
+                    <option value="whatsapp_cloud">WhatsApp Business Platform (official Cloud API)</option>
+                    <option value="whatsapp_web">WhatsApp Web (experimental, QR login)</option>
                   </Select>
                 </Field>
               )}
@@ -103,6 +108,8 @@ export function MessagingPage() {
             </div>
           )}
         </Card>
+        {o?.adapter === 'whatsapp_web' && <WhatsAppWebLogin overview={o} canManage={sup} />}
+        {o?.adapter === 'whatsapp_cloud' && <CloudApiSetup overview={o} canManage={sup} />}
         <Card title="Supported capabilities">
           {o?.capabilities ? <CapabilityList caps={o.capabilities} /> : <p className="text-sm text-slate-500">No adapter active.</p>}
           {groupGap && (
@@ -151,6 +158,103 @@ export function MessagingPage() {
         {o?.adapter === 'mock' && <MockSimulator />}
       </div>
     </>
+  );
+}
+
+/** QR login for the experimental WhatsApp Web adapter. The QR image is fetched only while one is waiting. */
+function WhatsAppWebLogin({ overview, canManage }: { overview: MessagingOverview; canManage: boolean }) {
+  const qc = useQueryClient();
+  const waiting = canManage && overview.login.qrAvailable;
+  const qr = useQuery({
+    queryKey: ['messaging-qr'],
+    queryFn: () => api.get<{ qr: string | null }>('/api/settings/messaging/qr'),
+    enabled: waiting,
+    refetchInterval: waiting ? 3_000 : false,
+    gcTime: 0,
+  });
+  const refresh = () => void qc.invalidateQueries({ queryKey: ['messaging'] });
+  const connect = useMutation({ mutationFn: () => api.post('/api/settings/messaging/connect'), onSuccess: refresh });
+  const logout = useMutation({ mutationFn: () => api.post('/api/settings/messaging/logout'), onSuccess: refresh });
+  const state = overview.status.state;
+
+  return (
+    <Card title="WhatsApp Web login">
+      <div className="space-y-3 text-sm">
+        <p className="rounded bg-amber-50 p-2 text-xs text-amber-800">
+          Unofficial automation can violate WhatsApp terms and get the number banned. Use a separate test number, not your business number.
+        </p>
+        {state === 'connected' ? (
+          <p>
+            Linked as <code className="text-xs">{overview.status.botId}</code>.
+          </p>
+        ) : waiting && qr.data?.qr ? (
+          <div className="space-y-2">
+            <img src={qr.data.qr} alt="WhatsApp login QR code" className="h-56 w-56 rounded border border-slate-200" />
+            <p className="text-xs text-slate-500">On the phone: WhatsApp → Settings → Linked devices → Link a device, then scan. The code refreshes automatically.</p>
+          </div>
+        ) : (
+          <p className="text-slate-500">{state === 'connecting' ? 'Waiting for a QR code…' : 'Not linked.'}</p>
+        )}
+        {canManage && (
+          <div className="flex flex-wrap gap-2">
+            {state !== 'connected' && (
+              <Button variant="secondary" disabled={connect.isPending} onClick={() => connect.mutate()}>
+                {state === 'connecting' ? 'Restart connection' : 'Connect / show QR'}
+              </Button>
+            )}
+            <Button
+              variant="danger"
+              disabled={logout.isPending}
+              onClick={() => window.confirm('Unlink this device and delete the saved WhatsApp session?') && logout.mutate()}
+            >
+              Log out device
+            </Button>
+          </div>
+        )}
+        <ErrorText error={connect.error ?? logout.error} />
+      </div>
+    </Card>
+  );
+}
+
+/** Configuration checklist for the official Cloud API. Secrets live in server environment variables only. */
+function CloudApiSetup({ overview, canManage }: { overview: MessagingOverview; canManage: boolean }) {
+  const qc = useQueryClient();
+  const connect = useMutation({ mutationFn: () => api.post('/api/settings/messaging/connect'), onSuccess: () => void qc.invalidateQueries({ queryKey: ['messaging'] }) });
+  const c = overview.cloud;
+  const row = (label: string, ok: boolean, value?: string | null) => (
+    <li className="flex items-center gap-2">
+      {ok ? <Badge tone="green">set</Badge> : <Badge tone="red">missing</Badge>}
+      {label}
+      {value && <code className="text-xs text-slate-500">{value}</code>}
+    </li>
+  );
+  return (
+    <Card title="WhatsApp Business Platform setup">
+      <div className="space-y-3 text-sm">
+        <ul className="space-y-1">
+          {row('Phone number ID', !!c.phoneNumberId, c.phoneNumberId)}
+          {row('Access token', c.accessTokenSet)}
+          {row('App secret (webhook signatures)', c.appSecretSet)}
+          {row('Webhook verify token', c.verifyTokenSet)}
+          <li className="text-xs text-slate-500">Business account ID: {c.businessAccountId ?? 'not set (optional)'} · Graph API {c.apiVersion}</li>
+        </ul>
+        {overview.cloudWebhookUrl && (
+          <Field label="Webhook callback URL (paste into Meta → WhatsApp → Configuration, subscribe to “messages”)">
+            <Input readOnly value={overview.cloudWebhookUrl} onFocus={(e) => e.target.select()} />
+          </Field>
+        )}
+        <p className="text-xs text-slate-500">
+          Values are set in the server environment (WHATSAPP_CLOUD_*), never in the browser. Restart the server after changing them.
+        </p>
+        {canManage && (
+          <Button variant="secondary" disabled={connect.isPending || c.missing.length > 0} onClick={() => connect.mutate()}>
+            Check connection
+          </Button>
+        )}
+        <ErrorText error={connect.error} />
+      </div>
+    </Card>
   );
 }
 

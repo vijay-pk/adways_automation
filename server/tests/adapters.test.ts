@@ -86,11 +86,11 @@ describe('adapter switching and capabilities', () => {
     expect(await prisma.responseJob.count()).toBe(0);
   });
 
-  it('the experimental WhatsApp Web adapter is not falsely offered', async () => {
+  it('the experimental WhatsApp Web adapter cannot be enabled without the risk acknowledgement', async () => {
     const sup = await login('SUPER_ADMIN');
-    await sup.patch('/api/settings', { whatsapp_web_risk_acknowledged: true });
     const res = await sup.patch('/api/settings', { messaging_adapter: 'whatsapp_web' });
     expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/risk/i);
     expect(getActiveAdapter()?.name).toBe('mock');
   });
 });

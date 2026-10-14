@@ -20,6 +20,12 @@ export default defineConfig({
       WORKER_ENABLED: 'false',
       ENABLE_DEV_ROUTES: 'false',
       UPLOAD_DIR: '.test-uploads',
+      WHATSAPP_WEB_SESSION_DIR: '.test-wa-session',
+      // Real Cloud API credentials from .env must never reach tests (tests inject their own config).
+      WHATSAPP_CLOUD_PHONE_NUMBER_ID: '',
+      WHATSAPP_CLOUD_ACCESS_TOKEN: '',
+      WHATSAPP_CLOUD_APP_SECRET: '',
+      WHATSAPP_CLOUD_VERIFY_TOKEN: '',
       SESSION_SECRET: 'test-secret-test-secret-test-secret-123',
     },
   },
