@@ -6,6 +6,7 @@ import { prisma } from '../src/db/prisma.js';
 import { activateAdapter, getActiveAdapter, setWhatsAppWebOptions } from '../src/messaging/registry.js';
 import { normalizeJid, normalizeWaMessage, type WaRawMessage, type WaSocketLike } from '../src/messaging/whatsappWebAdapter.js';
 import { WhatsAppCloudApiAdapter, parseCloudWebhook, setCloudConfig, type CloudConfig } from '../src/messaging/cloudApiAdapter.js';
+import { updateSettings } from '../src/settings/settingsService.js';
 import { CTR_TRANSCRIPT, app, flushJobs, login, seedTranscript, setupWorld } from './helpers.js';
 
 const SESSION_DIR = '.test-wa-session';
@@ -121,6 +122,21 @@ describe('WhatsApp Web adapter (fake socket)', () => {
     const linked = await sup.get('/api/settings/messaging');
     expect(linked.body.status).toMatchObject({ state: 'connected', botId: '15550001111@s.whatsapp.net' });
     expect((await sup.get('/api/settings/messaging/qr')).body.qr).toBeNull();
+  });
+
+  it('activates the already-selected adapter when the risk is acknowledged, without an adapter switch', async () => {
+    // Boot inconsistency: whatsapp_web is the selected adapter but the risk was never
+    // acknowledged, so activation was refused and mock stayed active.
+    await updateSettings({ messaging_adapter: 'whatsapp_web' }, null);
+    expect(getActiveAdapter()?.name).toBe('mock');
+
+    const sup = await login('SUPER_ADMIN');
+    expect((await sup.patch('/api/settings', { whatsapp_web_risk_acknowledged: true })).status).toBe(200);
+
+    // Acknowledging alone (no adapter change) now brings the selected adapter up.
+    expect(getActiveAdapter()?.name).toBe('whatsapp_web');
+    sock.emit('connection.update', { qr: 'test-qr-payload' });
+    expect((await sup.get('/api/settings/messaging/qr')).body.qr).toMatch(/^data:image\/png;base64,/);
   });
 
   it('answers a private message through the normal AI pipeline and quotes the question', async () => {

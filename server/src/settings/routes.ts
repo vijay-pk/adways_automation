@@ -11,6 +11,7 @@ import {
   assertAdapterAllowed,
   connectActive,
   disconnectActive,
+  getActiveAdapter,
   getLoginQr,
   logoutActive,
 } from '../messaging/registry.js';
@@ -39,8 +40,14 @@ settingsRouter.patch('/', requireRole(...SUPER), async (req, res) => {
   await audit(req.auth!.admin.id, 'settings.update', 'settings', undefined, {
     changes: Object.fromEntries(changed.map((k) => [k, { from: before[k as keyof Settings], to: after[k as keyof Settings] }])),
   });
-  if (after.messaging_adapter !== before.messaging_adapter) await activateAdapter(after.messaging_adapter, after);
-  else if (after.messaging_connection_enabled !== before.messaging_connection_enabled) {
+  // Acknowledging the gate for the already-selected adapter should bring it up, since
+  // activation was refused (at boot or when it was selected) while it was unacknowledged.
+  const nowAcknowledged =
+    (after.messaging_adapter === 'whatsapp_web' && !before.whatsapp_web_risk_acknowledged && after.whatsapp_web_risk_acknowledged) ||
+    (after.messaging_adapter === 'whatsapp_cloud' && !before.cloud_api_policy_acknowledged && after.cloud_api_policy_acknowledged);
+  if (after.messaging_adapter !== before.messaging_adapter || (nowAcknowledged && getActiveAdapter()?.name !== after.messaging_adapter)) {
+    await activateAdapter(after.messaging_adapter, after);
+  } else if (after.messaging_connection_enabled !== before.messaging_connection_enabled) {
     if (after.messaging_connection_enabled) await connectActive();
     else await disconnectActive();
   }
