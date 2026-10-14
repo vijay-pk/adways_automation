@@ -7,11 +7,19 @@ import { disconnectActive } from './messaging/registry.js';
 import { prisma } from './db/prisma.js';
 import { logger } from './lib/logger.js';
 import { getStorage } from './storage/index.js';
+import { ensureEnvAdmin } from './auth/authService.js';
 
 async function main() {
   await prisma.$connect();
   await getStorage().ensureReady();
   await bootstrap();
+  // The admin login from INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD is permanent and re-synced on every start.
+  try {
+    const envAdmin = await ensureEnvAdmin(process.env.INITIAL_ADMIN_EMAIL, process.env.INITIAL_ADMIN_PASSWORD);
+    logger.info({ status: envAdmin.status }, 'environment admin sync');
+  } catch (err) {
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, 'environment admin sync failed');
+  }
   // Jobs interrupted by a crash or restart are picked up again (all state lives in Postgres).
   await recoverStaleJobs(0);
   await enqueueDebounced('retention', 'daily', {}, new Date(Date.now() + 60_000));

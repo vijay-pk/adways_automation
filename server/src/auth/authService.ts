@@ -104,3 +104,41 @@ export const publicAdmin = (a: Administrator) => ({
   createdAt: a.createdAt,
   lastLoginAt: a.lastLoginAt,
 });
+
+/**
+ * Keeps the administrator defined by INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD in sync with the
+ * environment on every start: creates it if missing, otherwise resets its password to the env value.
+ * The env login is permanent, so no forced password change is required for it.
+ */
+export async function ensureEnvAdmin(email: string | undefined, password: string | undefined) {
+  if (!email || !password) return { status: 'skipped' as const };
+  const parsed = passwordPolicy.safeParse(password);
+  if (!parsed.success) throw new Error(`INITIAL_ADMIN_PASSWORD: ${parsed.error.issues[0].message}`);
+  const normalized = email.trim().toLowerCase();
+  const existing = await prisma.administrator.findUnique({ where: { email: normalized } });
+  if (!existing) {
+    const admin = await prisma.administrator.create({
+      data: { email: normalized, passwordHash: await hashPassword(password), role: 'SUPER_ADMIN', mustChangePassword: false },
+    });
+    await audit(admin.id, 'admin.env_sync_created', 'administrator', admin.id);
+    return { status: 'created' as const };
+  }
+  const samePassword = await verifyPassword(existing.passwordHash, password);
+  if (samePassword && existing.isActive && existing.role === 'SUPER_ADMIN' && !existing.mustChangePassword) {
+    return { status: 'unchanged' as const };
+  }
+  await prisma.administrator.update({
+    where: { id: existing.id },
+    data: {
+      ...(samePassword ? {} : { passwordHash: await hashPassword(password) }),
+      isActive: true,
+      role: 'SUPER_ADMIN',
+      mustChangePassword: false,
+      failedLogins: 0,
+      lockedUntil: null,
+    },
+  });
+  if (!samePassword) await prisma.adminSession.deleteMany({ where: { adminId: existing.id } });
+  await audit(existing.id, 'admin.env_sync_updated', 'administrator', existing.id);
+  return { status: 'updated' as const };
+}
