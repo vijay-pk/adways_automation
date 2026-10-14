@@ -1,0 +1,79 @@
+# Render Blueprint for Course Tutor (https://render.com/docs/blueprint-spec).
+#
+# Deploys the app from the root Dockerfile. The container runs
+# `prisma migrate deploy && node dist/index.js`, so every deploy applies pending
+# migrations before starting.
+#
+# IMPORTANT:
+# - This app needs an always-on instance with a persistent disk. WhatsApp Web
+#   (Baileys) keeps a long-lived socket and stores its linked-device session on
+#   disk; the in-process job worker also runs here. The Render Free plan spins
+#   down on inactivity and has no persistent disk, so WhatsApp Web and background
+#   jobs will NOT work reliably there. Use a paid plan (starter or higher).
+# - Secrets and connection strings are marked `sync: false`: set their values in
+#   the Render dashboard (Environment), never in this file.
+# - If a service for this repo already exists, applying this Blueprint may create
+#   a SECOND service. Either attach the Blueprint to the existing service or
+#   delete the manual one first.
+
+services:
+  - type: web
+    name: course-tutor
+    runtime: docker
+    plan: starter # not "free": WhatsApp Web + worker + disk need an always-on instance
+    region: singapore # closest Render region to the Supabase ap-northeast-2 database
+    branch: main
+    autoDeploy: true # deploy on every push to main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    disk:
+      name: data
+      mountPath: /data # matches UPLOAD_DIR and WHATSAPP_WEB_SESSION_DIR below
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: UPLOAD_DIR
+        value: /data/uploads
+      - key: WHATSAPP_WEB_SESSION_DIR
+        value: /data/wa-session
+      - key: AI_PROVIDER
+        value: groq
+      # Session signing key: Render generates a strong value once and keeps it.
+      - key: SESSION_SECRET
+        generateValue: true
+      # --- Set these in the Render dashboard (Environment) ---
+      # Supabase Postgres. DATABASE_URL = transaction pooler (6543, pgbouncer=true);
+      # DIRECT_URL = session pooler (5432) for migrations. Both need ?schema=tutor.
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      # Public origin of this service, e.g. https://course-tutor.onrender.com
+      # or your custom domain. Used for links and the Cloud API webhook URL.
+      - key: APP_ORIGIN
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      # Transcript storage: "supabase" (private bucket) or "local" (uses the disk).
+      - key: STORAGE_PROVIDER
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Embeddings (optional): "none", "openai_compatible", or "mock".
+      - key: EMBEDDING_PROVIDER
+        sync: false
+      - key: EMBEDDING_API_KEY
+        sync: false
+      # WhatsApp Business Cloud API (optional; only if using that adapter).
+      - key: WHATSAPP_CLOUD_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_CLOUD_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_CLOUD_APP_SECRET
+        sync: false
+      - key: WHATSAPP_CLOUD_VERIFY_TOKEN
+        sync: false
