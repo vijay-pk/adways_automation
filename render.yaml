@@ -4,40 +4,39 @@
 # `prisma migrate deploy && node dist/index.js`, so every deploy applies pending
 # migrations before starting.
 #
-# IMPORTANT:
-# - This app needs an always-on instance with a persistent disk. WhatsApp Web
-#   (Baileys) keeps a long-lived socket and stores its linked-device session on
-#   disk; the in-process job worker also runs here. The Render Free plan spins
-#   down on inactivity and has no persistent disk, so WhatsApp Web and background
-#   jobs will NOT work reliably there. Use a paid plan (starter or higher).
-# - Secrets and connection strings are marked `sync: false`: set their values in
-#   the Render dashboard (Environment), never in this file.
-# - If a service for this repo already exists, applying this Blueprint may create
-#   a SECOND service. Either attach the Blueprint to the existing service or
-#   delete the manual one first.
+# PLAN: free (chosen deliberately). LIMITATIONS you accept on free:
+# - No persistent disk. The WhatsApp Web linked-device session lives on the
+#   container's ephemeral filesystem, so it is LOST on every restart/redeploy and
+#   on spin-down — you will have to re-scan the QR. WhatsApp Web is therefore NOT
+#   reliable on free; it works only until the next restart.
+# - Free services spin down after ~15 min idle. While asleep, the long-lived
+#   WhatsApp socket drops and the in-process job worker is paused; they resume on
+#   the next request (after a cold start), but queued work waits until then.
+# - Uploaded transcript files are also ephemeral. Set STORAGE_PROVIDER=supabase
+#   (private bucket) so transcripts survive; "local" storage will be wiped.
+# To make WhatsApp Web and the worker reliable, move to a paid plan and add a
+# persistent disk mounted at /data (see git history for the starter+disk version).
+#
+# Secrets and connection strings are `sync: false`: set their values in the
+# Render dashboard (Environment), never in this file.
+#
+# NOTE: if a service for this repo already exists, applying this Blueprint may
+# create a SECOND service — attach it to the existing one or delete the manual one.
 
 services:
   - type: web
     name: course-tutor
     runtime: docker
-    plan: starter # not "free": WhatsApp Web + worker + disk need an always-on instance
+    plan: free
     region: singapore # closest Render region to the Supabase ap-northeast-2 database
     branch: main
     autoDeploy: true # deploy on every push to main
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
-    disk:
-      name: data
-      mountPath: /data # matches UPLOAD_DIR and WHATSAPP_WEB_SESSION_DIR below
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
-      - key: UPLOAD_DIR
-        value: /data/uploads
-      - key: WHATSAPP_WEB_SESSION_DIR
-        value: /data/wa-session
       - key: AI_PROVIDER
         value: groq
       # Session signing key: Render generates a strong value once and keeps it.
@@ -56,7 +55,7 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
-      # Transcript storage: "supabase" (private bucket) or "local" (uses the disk).
+      # Transcript storage: use "supabase" on free (local uploads are wiped on restart).
       - key: STORAGE_PROVIDER
         sync: false
       - key: SUPABASE_URL
