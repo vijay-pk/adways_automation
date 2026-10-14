@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
-import type { AdminRole, ChatType } from '@prisma/client';
+import type { AdminRole, ChatType, EnrollmentStatus } from '@prisma/client';
 import { prisma } from '../src/db/prisma.js';
 import { createApp } from '../src/app.js';
 import { bootstrap } from '../src/bootstrap.js';
@@ -74,6 +74,14 @@ export async function enrollStudent(platformUserId: string, displayName = platfo
     where: { channel_platformUserId: { channel: 'MOCK', platformUserId } },
     create: { channel: 'MOCK', platformUserId, displayName, enrollmentStatus: 'ACTIVE' },
     update: { enrollmentStatus: 'ACTIVE' },
+  });
+}
+
+export async function setStudentStatus(platformUserId: string, enrollmentStatus: EnrollmentStatus, displayName = platformUserId) {
+  return prisma.student.upsert({
+    where: { channel_platformUserId: { channel: 'MOCK', platformUserId } },
+    create: { channel: 'MOCK', platformUserId, displayName, enrollmentStatus },
+    update: { enrollmentStatus },
   });
 }
 

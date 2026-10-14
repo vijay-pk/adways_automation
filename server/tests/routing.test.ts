@@ -12,6 +12,7 @@ import {
   minutesAgo,
   ROAS_TRANSCRIPT,
   seedTranscript,
+  setStudentStatus,
   setupWorld,
   TRACKING_TRANSCRIPT,
 } from './helpers.js';
@@ -155,6 +156,32 @@ describe('private routing', () => {
     expect(mock.outbox[0].destination.chatType).toBe('PRIVATE');
   });
 
+  it('auto-enrolls a first-time private sender even while enrollment is required', async () => {
+    // require_enrollment defaults on; studentC was never enrolled. A first private message
+    // promotes the sender from PENDING to ACTIVE, so it is processed instead of blocked.
+    await inbound(mock, { chatId: 'studentC@c.us', senderId: 'studentC', text: 'What is CTR?' });
+    await flushJobs();
+    expect(await jobs()).toHaveLength(1);
+    expect((await prisma.student.findFirstOrThrow({ where: { platformUserId: 'studentC' } })).enrollmentStatus).toBe('ACTIVE');
+  });
+
+  it('keeps a suspended sender blocked despite auto-enroll', async () => {
+    // Admin suspensions must hold: auto-enroll only promotes the untouched PENDING default.
+    await setStudentStatus('studentC', 'SUSPENDED');
+    await inbound(mock, { chatId: 'studentC@c.us', senderId: 'studentC', text: 'What is CTR?' });
+    await flushJobs();
+    expect(await jobs()).toHaveLength(0);
+    expect((await prisma.incomingMessage.findFirstOrThrow({ where: { senderExternalId: 'studentC' } })).processingStatus).toBe('BLOCKED');
+    expect((await prisma.student.findFirstOrThrow({ where: { platformUserId: 'studentC' } })).enrollmentStatus).toBe('SUSPENDED');
+  });
+
+  it('turning off require_enrollment lets any sender through', async () => {
+    await updateSettings({ require_enrollment: false }, null);
+    await inbound(mock, { chatId: 'studentX@c.us', senderId: 'studentX', text: 'What is CTR?' });
+    await flushJobs();
+    expect(await jobs()).toHaveLength(1);
+  });
+
   it('a burst of consecutive private messages yields one answer', async () => {
     await inbound(mock, { chatId: 'studentA@c.us', senderId: 'studentA', text: 'Hi', at: minutesAgo(0.3) });
     await inbound(mock, { chatId: 'studentA@c.us', senderId: 'studentA', text: 'what is ROAS', at: minutesAgo(0.2) });
@@ -194,11 +221,13 @@ describe('private routing', () => {
     expect(all[1].previousJobId).toBeNull();
   });
 
-  it('blocks students who are not enrolled', async () => {
-    await inbound(mock, { chatId: 'x@c.us', senderId: 'stranger', text: 'What is CTR?' });
+  it('does not auto-enroll in groups: an unenrolled mention stays blocked', async () => {
+    // Auto-enroll is private-only. A group mention from a never-enrolled sender is still gated.
+    await inbound(mock, { chatId: GROUP, chatType: 'GROUP', senderId: 'stranger', text: '@CourseAI what is CTR?', mention: true });
     await flushJobs();
     expect(await jobs()).toHaveLength(0);
-    expect((await prisma.incomingMessage.findFirst())?.processingStatus).toBe('BLOCKED');
+    expect((await prisma.incomingMessage.findFirstOrThrow({ where: { senderExternalId: 'stranger' } })).processingStatus).toBe('BLOCKED');
+    expect((await prisma.student.findFirstOrThrow({ where: { platformUserId: 'stranger' } })).enrollmentStatus).toBe('PENDING');
   });
 
   it('enforces per-student rate limits', async () => {

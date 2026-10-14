@@ -44,6 +44,12 @@ export async function ingestMessage(msg: NormalizedMessage, ctx: IngestContext):
   }
 
   const student = await upsertStudent(msg);
+  // First private contact enrolls the sender automatically. Only promotes the untouched default
+  // (PENDING); a SUSPENDED or REMOVED student stays blocked, so admin decisions are never undone.
+  if (msg.chatType === 'PRIVATE' && student.enrollmentStatus === 'PENDING') {
+    await prisma.student.update({ where: { id: student.id }, data: { enrollmentStatus: 'ACTIVE' } });
+    student.enrollmentStatus = 'ACTIVE';
+  }
   const conversation = await prisma.conversation.upsert({
     where: { channel_externalChatId: { channel: msg.channel, externalChatId: msg.chatId } },
     create: {
