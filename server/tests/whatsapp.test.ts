@@ -190,6 +190,39 @@ describe('WhatsApp Web adapter (fake socket)', () => {
   });
 });
 
+describe('inbound diagnostics log', () => {
+  beforeEach(async () => {
+    await setupWorld(); // defaults: require_enrollment = true
+  });
+
+  it('is super-admin only and explains why each captured message was accepted or blocked, without leaking text', async () => {
+    const student = await prisma.student.create({
+      data: { channel: 'WHATSAPP_WEB', platformUserId: '919000000001@s.whatsapp.net', enrollmentStatus: 'PENDING' },
+    });
+    const convo = await prisma.conversation.create({
+      data: { channel: 'WHATSAPP_WEB', externalChatId: student.platformUserId, chatType: 'PRIVATE', studentId: student.id, lastMessageAt: new Date() },
+    });
+    const base = { channel: 'WHATSAPP_WEB' as const, conversationId: convo.id, senderExternalId: student.platformUserId, studentId: student.id, content: 'SECRET_MSG_BODY', timestamp: new Date() };
+    await prisma.incomingMessage.create({ data: { ...base, externalMessageId: 'b1', processingStatus: 'BLOCKED' } });
+    await prisma.incomingMessage.create({ data: { ...base, externalMessageId: 'q1', processingStatus: 'QUEUED', mentionMetadata: { via: 'private' } } });
+
+    const reviewer = await login('REVIEWER');
+    expect((await reviewer.get('/api/settings/messaging/inbound-log')).status).toBe(403);
+
+    const sup = await login('SUPER_ADMIN');
+    const res = await sup.get('/api/settings/messaging/inbound-log');
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(2);
+    const blocked = res.body.items.find((i: { status: string }) => i.status === 'BLOCKED');
+    const queued = res.body.items.find((i: { status: string }) => i.status === 'QUEUED');
+    expect(blocked.reason).toMatch(/not enrolled/i);
+    expect(blocked.sender).toBe(student.platformUserId);
+    expect(queued.reason).toMatch(/accepted/i);
+    expect(queued.via).toBe('private');
+    expect(JSON.stringify(res.body)).not.toContain('SECRET_MSG_BODY');
+  });
+});
+
 const CLOUD: CloudConfig = {
   graphUrl: 'https://graph.test',
   apiVersion: 'v23.0',

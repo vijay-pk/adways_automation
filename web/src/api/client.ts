@@ -122,6 +122,18 @@ export interface MessagingOverview {
   webChatEnabled?: boolean;
 }
 
+export interface InboundLogEntry {
+  id: string;
+  channel: string;
+  chatType: string;
+  sender: string;
+  isMention: boolean;
+  via: string | null;
+  status: string;
+  reason: string;
+  at: string;
+}
+
 export type ResponseStatus = 'GENERATING' | 'PENDING_APPROVAL' | 'APPROVED' | 'SENDING' | 'SENT' | 'REJECTED' | 'CANCELLED' | 'FAILED';
 
 export interface SourceRef {

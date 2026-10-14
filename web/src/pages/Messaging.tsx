@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type Capabilities, type MessagingOverview, type Settings } from '../api/client';
+import { api, type Capabilities, type InboundLogEntry, type MessagingOverview, type Settings } from '../api/client';
 import { isSuper, useAuth } from '../auth';
 import { Badge, Button, Card, ErrorText, Field, Input, Select, Toggle, statusTone } from '../components/ui';
 import { EmergencyControls } from '../components/EmergencyControls';
@@ -155,9 +155,53 @@ export function MessagingPage() {
             ))}
           </ul>
         </Card>
+        {sup && <InboundDiagnostics />}
         {o?.adapter === 'mock' && <MockSimulator />}
       </div>
     </>
+  );
+}
+
+/** Super-admin diagnostics: why each captured inbound message was accepted, held, or blocked. */
+function InboundDiagnostics() {
+  const log = useQuery({
+    queryKey: ['messaging-inbound-log'],
+    queryFn: () => api.get<{ items: InboundLogEntry[] }>('/api/settings/messaging/inbound-log'),
+    refetchInterval: 10_000,
+  });
+  const items = log.data?.items ?? [];
+  const tone = (s: string) => (s === 'QUEUED' || s === 'CONSUMED' ? 'green' : s === 'BLOCKED' || s === 'IGNORED' ? 'red' : 'amber');
+  return (
+    <Card title="Recent inbound (diagnostics)">
+      <div className="space-y-2 text-sm">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-slate-500">Why each captured message was accepted, kept as context, or blocked. Message text is never shown here.</p>
+          <Button variant="secondary" disabled={log.isFetching} onClick={() => void log.refetch()}>
+            Refresh
+          </Button>
+        </div>
+        {items.length === 0 ? (
+          <p className="text-slate-500">No inbound messages captured yet.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {items.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-center gap-2 py-2">
+                <Badge tone={tone(m.status)}>{m.status}</Badge>
+                <code className="text-xs text-slate-500">{m.sender}</code>
+                <span className="text-xs text-slate-400">
+                  {m.chatType}
+                  {m.isMention ? ' · mention' : ''}
+                  {m.via ? ` · ${m.via}` : ''}
+                </span>
+                <span className="text-slate-600">{m.reason}</span>
+                <span className="ml-auto text-xs text-slate-400">{new Date(m.at).toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <ErrorText error={log.error} />
+      </div>
+    </Card>
   );
 }
 

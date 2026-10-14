@@ -16,6 +16,7 @@ import {
   logoutActive,
 } from '../messaging/registry.js';
 import { queueStats } from '../jobs/queue.js';
+import { prisma } from '../db/prisma.js';
 import QRCode from 'qrcode';
 import { env } from '../config/env.js';
 
@@ -120,4 +121,73 @@ settingsRouter.post('/messaging/logout', requireRole(...SUPER), async (req, res)
   await logoutActive();
   await audit(req.auth!.admin.id, 'messaging.logout', 'settings');
   res.json(await adapterOverview());
+});
+
+type InboundRow = {
+  processingStatus: string;
+  isMention: boolean;
+  mentionMetadata: unknown;
+  conversation: { chatType: string };
+  student: { enrollmentStatus: string } | null;
+};
+
+/** Plain-language reason a captured message was accepted, held as context, or blocked. */
+function describeInbound(m: InboundRow, settings: Settings): string {
+  switch (m.processingStatus) {
+    case 'QUEUED':
+    case 'CONSUMED':
+      return 'Accepted for AI processing';
+    case 'CONTEXT_ONLY':
+      return m.conversation.chatType === 'GROUP'
+        ? 'Group message without a tutor mention — kept as context only'
+        : 'Replies are turned off for this chat type — kept as context only';
+    case 'BLOCKED':
+      return settings.require_enrollment && m.student?.enrollmentStatus !== 'ACTIVE'
+        ? `Sender not enrolled — enrollment is required (sender is ${m.student?.enrollmentStatus ?? 'unknown'})`
+        : 'Per-sender rate limit reached';
+    case 'IGNORED':
+      return 'Ignored';
+    default:
+      return 'Received — not yet processed';
+  }
+}
+
+/**
+ * Recent inbound-message diagnostics: shows why each captured message was accepted,
+ * held as context, or blocked, so an empty approval queue can be explained. Super admins
+ * only; returns metadata and a derived reason, never the message text.
+ */
+settingsRouter.get('/messaging/inbound-log', requireRole(...SUPER), async (_req, res) => {
+  const [settings, rows] = await Promise.all([
+    getSettings(),
+    prisma.incomingMessage.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 25,
+      select: {
+        id: true,
+        channel: true,
+        senderExternalId: true,
+        isMention: true,
+        mentionMetadata: true,
+        processingStatus: true,
+        createdAt: true,
+        conversation: { select: { chatType: true } },
+        student: { select: { enrollmentStatus: true } },
+      },
+    }),
+  ]);
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    items: rows.map((m) => ({
+      id: m.id,
+      channel: m.channel,
+      chatType: m.conversation.chatType,
+      sender: m.senderExternalId,
+      isMention: m.isMention,
+      via: (m.mentionMetadata as { via?: string } | null)?.via ?? null,
+      status: m.processingStatus,
+      reason: describeInbound(m as InboundRow, settings),
+      at: m.createdAt,
+    })),
+  });
 });
