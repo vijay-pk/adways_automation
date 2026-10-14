@@ -27,8 +27,8 @@ const schema = z.object({
   AI_PROVIDER: z.enum(['groq', 'mock']).default('mock'),
   GROQ_API_KEY: z.string().optional(),
   GROQ_BASE_URL: z.string().default('https://api.groq.com/openai/v1'),
-  GROQ_ANSWER_MODEL: z.string().default('llama-3.3-70b-versatile'),
-  GROQ_FAST_MODEL: z.string().default('llama-3.1-8b-instant'),
+  GROQ_ANSWER_MODEL: z.string().default('openai/gpt-oss-120b'),
+  GROQ_FAST_MODEL: z.string().default('openai/gpt-oss-20b'),
   // USD per 1M tokens, used for cost estimates only.
   AI_PRICE_INPUT_PER_M: z.coerce.number().default(0.59),
   AI_PRICE_OUTPUT_PER_M: z.coerce.number().default(0.79),
