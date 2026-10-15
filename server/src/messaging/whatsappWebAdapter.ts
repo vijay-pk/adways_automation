@@ -2,6 +2,8 @@ import { mkdir, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
+import { getStorage } from '../storage/index.js';
+import { useRemoteAuthState, clearRemoteAuthState } from './waAuthState.js';
 import type {
   AdapterCapabilities,
   ConnectionStatus,
@@ -159,7 +161,17 @@ export function normalizeWaMessage(m: WaRawMessage, self: { jid: string | null; 
 const baileysFactory: WaSocketFactory = async (sessionDir) => {
   const baileys = await import('@whiskeysockets/baileys');
   const { default: pino } = await import('pino');
-  const { state, saveCreds } = await baileys.useMultiFileAuthState(sessionDir);
+  // With Supabase storage the linked-device session is kept in the private bucket so it survives
+  // restarts and redeploys (no QR re-scan). Otherwise it lives on the local filesystem dir.
+  let state: Awaited<ReturnType<typeof baileys.useMultiFileAuthState>>['state'];
+  let saveCreds: () => Promise<void>;
+  if (env.STORAGE_PROVIDER === 'supabase') {
+    const storage = getStorage();
+    await storage.ensureReady();
+    ({ state, saveCreds } = await useRemoteAuthState(storage));
+  } else {
+    ({ state, saveCreds } = await baileys.useMultiFileAuthState(sessionDir));
+  }
   const latest = await baileys.fetchLatestBaileysVersion().catch(() => null);
   const sock = baileys.makeWASocket({
     auth: state,
@@ -367,6 +379,11 @@ export class WhatsAppWebAdapter implements MessagingAdapter {
     await rm(this.sessionDir, { recursive: true, force: true }).catch((err) =>
       logger.error({ err: err instanceof Error ? err.message : String(err) }, 'could not delete WhatsApp Web session'),
     );
+    if (env.STORAGE_PROVIDER === 'supabase') {
+      await clearRemoteAuthState(getStorage()).catch((err) =>
+        logger.error({ err: err instanceof Error ? err.message : String(err) }, 'could not delete remote WhatsApp Web session'),
+      );
+    }
   }
 
   private clearTimer() {
