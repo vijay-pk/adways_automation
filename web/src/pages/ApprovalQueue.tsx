@@ -13,7 +13,9 @@ interface Detail {
   sender: { displayName: string | null; enrollmentStatus: string } | null;
 }
 
-const STATUSES: ResponseStatus[] = ['PENDING_APPROVAL', 'FAILED', 'APPROVED', 'SENDING', 'SENT', 'REJECTED', 'CANCELLED', 'GENERATING'];
+// Reviewer-facing statuses only. APPROVED, SENDING and GENERATING are momentary internal
+// states on the way to SENT and are not shown as filters.
+const STATUSES: ResponseStatus[] = ['PENDING_APPROVAL', 'SENT', 'FAILED', 'REJECTED', 'CANCELLED'];
 
 export function ApprovalQueuePage() {
   const { id } = useParams();
