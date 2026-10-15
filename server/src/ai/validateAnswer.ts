@@ -43,10 +43,9 @@ export function validateAnswer(result: GenerateResult, passages: Passage[], maxC
   if (result.evidenceSufficient && !evidenceSufficient) issues.push('Model claimed sufficient evidence without valid citations');
   if (!passages.length) evidenceSufficient = false;
 
-  if (!evidenceSufficient && !/course (material|transcript)s?|class material|not (covered|in the course)/i.test(body)) {
-    body = `${NO_EVIDENCE_NOTE}\n\n${body}`;
-  }
-
+  // The student-facing answer reads like a tutor: no "not in the transcripts" note and no sources
+  // footer. Evidence tracking (sources, evidenceSufficient, confidence) is still returned for the
+  // reviewer in the approval queue, just never shown in the message text.
   const sources: SourceRef[] = validRefs.map((r) => {
     const p = byRef.get(r)!;
     return {
@@ -60,15 +59,14 @@ export function validateAnswer(result: GenerateResult, passages: Passage[], maxC
     };
   });
 
-  const footer = sources.length ? `\n\nSources: ${formatSources(sources)}` : '';
-  const budget = Math.max(100, maxChars - footer.length);
+  const budget = Math.max(100, maxChars);
   if (body.length > budget) {
     issues.push(`Answer truncated from ${body.length} to ${budget} characters`);
     body = truncateAtSentence(body, budget);
   }
 
   const confidence = Math.max(0, Math.min(1, evidenceSufficient ? result.confidence : Math.min(result.confidence, 0.3)));
-  return { text: body + footer, sources, evidenceSufficient, confidence, issues };
+  return { text: body, sources, evidenceSufficient, confidence, issues };
 }
 
 export function formatSources(sources: SourceRef[]): string {

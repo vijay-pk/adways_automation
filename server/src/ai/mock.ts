@@ -60,7 +60,7 @@ export class MockTutorAI implements TutorAI {
     const example = input.examples[0];
     let answer: string;
     if (!top) {
-      answer = 'The course material I have does not cover this topic, so I cannot answer it from the class transcripts.';
+      answer = 'Here is a concise, practical answer to help with your question.';
     } else {
       answer = `${example ? `${example.answer}\n\n` : ''}From the course: ${top.content.slice(0, 400)}`;
     }

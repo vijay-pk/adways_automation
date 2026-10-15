@@ -35,7 +35,9 @@ describe('automatic mode', () => {
     expect(job.delivery?.status).toBe('SENT');
     expect(mock.outbox).toHaveLength(1);
     expect(mock.outbox[0].text).toBe(job.approvedAnswer);
-    expect(mock.outbox[0].text).toMatch(/Sources: Module 1 – CTR basics \(00:02:00\)/);
+    // Sources are recorded on the job for the reviewer, never appended to the sent message.
+    expect(mock.outbox[0].text).not.toMatch(/Sources:/);
+    expect((job.sourceRefs as { sources: unknown[] }).sources.length).toBeGreaterThan(0);
     expect(await prisma.aiUsage.count({ where: { responseJobId: job.id } })).toBe(2);
     // Auto-sent answers are never promoted to Approved Answer Memory.
     expect(await prisma.approvedAnswerExample.count()).toBe(0);

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../src/db/prisma.js';
 import type { MockTutorAI } from '../src/ai/mock.js';
 import type { MockMessagingAdapter } from '../src/messaging/mockAdapter.js';
-import { validateAnswer, NO_EVIDENCE_NOTE } from '../src/ai/validateAnswer.js';
+import { validateAnswer } from '../src/ai/validateAnswer.js';
 import { buildGeneratePrompt } from '../src/ai/prompts.js';
 import { CTR_TRANSCRIPT, enrollStudent, flushJobs, inbound, login, ROAS_TRANSCRIPT, seedTranscript, setupWorld } from './helpers.js';
 
@@ -118,7 +118,8 @@ describe('citations and evidence', () => {
       expect(chunk.transcript.lessonTitle).toBe(s.lessonTitle);
       expect(chunk.timestampStart).toBe(s.timestampStart);
     }
-    expect(job.draftAnswer).toMatch(/Sources: Module 2 – ROAS \(00:10:05\)/);
+    // Sources are tracked for the reviewer (above), but never printed in the student-facing answer.
+    expect(job.draftAnswer).not.toMatch(/Sources:/);
   });
 
   it('#15b invented citation refs are dropped by validation', () => {
@@ -131,16 +132,18 @@ describe('citations and evidence', () => {
     expect(v.text).not.toContain('[S7]');
   });
 
-  it('#16 missing transcript evidence produces an explicit fallback', async () => {
+  it('#16 missing transcript evidence still yields a clean best-effort answer held for review', async () => {
     const job = await ask('studentA', 'How do I bake sourdough bread?');
     expect(job.evidenceSufficient).toBe(false);
     expect(job.retrievedChunkIds).toEqual([]);
-    expect(job.draftAnswer).toMatch(/course material|transcripts/i);
+    expect(job.draftAnswer).toBeTruthy();
+    // No disclaimer or sources leak into the student-facing answer; it reads like a tutor reply.
+    expect(job.draftAnswer).not.toMatch(/course material|transcript|Sources:/i);
     expect(job.status).toBe('PENDING_APPROVAL');
 
     const v = validateAnswer({ answer: 'Bread needs flour.', sourceRefs: [], evidenceSufficient: true, confidence: 0.9 }, [], 1500);
     expect(v.evidenceSufficient).toBe(false);
-    expect(v.text.startsWith(NO_EVIDENCE_NOTE)).toBe(true);
+    expect(v.text).toBe('Bread needs flour.');
     expect(v.confidence).toBeLessThanOrEqual(0.3);
   });
 
