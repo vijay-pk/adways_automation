@@ -18,6 +18,8 @@ export type IngestOutcome =
 
 export interface IngestContext {
   botId: string | null;
+  /** The bot's alternate LID identity, if any. A group mention may target this instead of botId. */
+  botLid?: string | null;
   supportsNativeMentions: boolean;
 }
 
@@ -123,7 +125,9 @@ export async function ingestMessage(msg: NormalizedMessage, ctx: IngestContext):
 
 function detectInvocation(msg: NormalizedMessage, text: string, ctx: IngestContext, settings: Settings) {
   if (msg.chatType !== 'GROUP') return { invoked: true, via: 'private', cleanedText: text };
-  if (ctx.supportsNativeMentions && ctx.botId && msg.mentionedIds.includes(ctx.botId)) {
+  // The bot may be mentioned by its phone JID or its LID; match either.
+  const botIds = [ctx.botId, ctx.botLid].filter((id): id is string => !!id);
+  if (ctx.supportsNativeMentions && botIds.some((id) => msg.mentionedIds.includes(id))) {
     // Strip a leading "@Name" token that platforms render for native mentions.
     return { invoked: true, via: 'native_mention', cleanedText: text };
   }

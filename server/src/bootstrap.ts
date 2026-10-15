@@ -18,6 +18,7 @@ export async function bootstrap() {
     try {
       await ingestMessage(msg, {
         botId: adapter?.botId() ?? null,
+        botLid: (adapter as { botLid?(): string | null } | null)?.botLid?.() ?? null,
         supportsNativeMentions: adapter?.capabilities.nativeMentions ?? false,
       });
     } catch (err) {

@@ -176,18 +176,27 @@ settingsRouter.get('/messaging/inbound-log', requireRole(...SUPER), async (_req,
       },
     }),
   ]);
+  const adapter = getActiveAdapter();
   res.set('Cache-Control', 'no-store');
   res.json({
-    items: rows.map((m) => ({
-      id: m.id,
-      channel: m.channel,
-      chatType: m.conversation.chatType,
-      sender: m.senderExternalId,
-      isMention: m.isMention,
-      via: (m.mentionMetadata as { via?: string } | null)?.via ?? null,
-      status: m.processingStatus,
-      reason: describeInbound(m as InboundRow, settings),
-      at: m.createdAt,
-    })),
+    bot: {
+      botId: adapter?.botId() ?? null,
+      botLid: (adapter as { botLid?(): string | null } | null)?.botLid?.() ?? null,
+    },
+    items: rows.map((m) => {
+      const meta = m.mentionMetadata as { via?: string; mentionedIds?: string[] } | null;
+      return {
+        id: m.id,
+        channel: m.channel,
+        chatType: m.conversation.chatType,
+        sender: m.senderExternalId,
+        isMention: m.isMention,
+        mentionedIds: meta?.mentionedIds ?? [],
+        via: meta?.via ?? null,
+        status: m.processingStatus,
+        reason: describeInbound(m as InboundRow, settings),
+        at: m.createdAt,
+      };
+    }),
   });
 });

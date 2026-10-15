@@ -134,11 +134,9 @@ export function normalizeWaMessage(m: WaRawMessage, self: { jid: string | null; 
   const sender = normalizeJid(rawSender.endsWith('@lid') && altSender ? altSender : rawSender);
   if (!sender) return null;
 
-  // Mentions of the tutor may arrive as its LID; report them as the bot id the router compares with.
-  const mentionedIds = (info?.mentionedJid ?? []).map((j) => {
-    const n = normalizeJid(j);
-    return self.lid && self.jid && n === self.lid ? self.jid : n;
-  });
+  // Report mentions as their normalized JIDs/LIDs as-is. A tutor mention may arrive as either the
+  // bot's phone JID or its LID, so the router matches against both (see detectInvocation).
+  const mentionedIds = (info?.mentionedJid ?? []).map((j) => normalizeJid(j));
   const isSelf = !!key.fromMe || (!!self.jid && sender === self.jid) || (!!self.lid && sender === self.lid);
 
   return {
@@ -209,6 +207,11 @@ export class WhatsAppWebAdapter implements MessagingAdapter {
 
   botId() {
     return this.selfJid;
+  }
+
+  /** The bot's LID identity, if known. Group mentions may arrive as this instead of the phone JID. */
+  botLid() {
+    return this.selfLid;
   }
 
   loginQr() {
